@@ -203,16 +203,17 @@ func (sc *conn) QueueSubscribe(subject, qgroup string, cb MsgHandler, options ..
 
 // subscribe will perform a subscription with the given options to the NATS Streaming cluster.
 func (sc *conn) subscribe(subject, qgroup string, cb MsgHandler, options ...SubscriptionOption) (Subscription, error) {
-	sub := &subscription{subject: subject, qgroup: qgroup, inbox: nats.NewInbox(), cb: cb, sc: sc, opts: DefaultSubscriptionOptions}
-	for _, opt := range options {
-		if err := opt(&sub.opts); err != nil {
-			return nil, err
-		}
-	}
 	sc.Lock()
 	if sc.nc == nil {
 		sc.Unlock()
 		return nil, ErrConnectionClosed
+	}
+
+	sub := &subscription{subject: subject, qgroup: qgroup, inbox: nats.NewClientInbox(sc.clientID + ".SubInbox"), cb: cb, sc: sc, opts: DefaultSubscriptionOptions}
+	for _, opt := range options {
+		if err := opt(&sub.opts); err != nil {
+			return nil, err
+		}
 	}
 
 	// Register subscription.
@@ -253,7 +254,7 @@ func (sc *conn) subscribe(subject, qgroup string, cb MsgHandler, options ...Subs
 	}
 
 	b, _ := sr.Marshal()
-	reply, err := nc.Request(sc.subRequests, b, sc.opts.ConnectTimeout)
+	reply, err := nc.Request(sc.subRequests+"."+subject, b, sc.opts.ConnectTimeout)
 	if err != nil {
 		sub.inboxSub.Unsubscribe()
 		if err == nats.ErrTimeout {
@@ -405,7 +406,7 @@ func (sub *subscription) closeOrUnsubscribe(doClose bool) error {
 		Inbox:    sub.ackInbox,
 	}
 	b, _ := usr.Marshal()
-	reply, err := nc.Request(reqSubject, b, sc.opts.ConnectTimeout)
+	reply, err := nc.Request(reqSubject+"."+sub.subject, b, sc.opts.ConnectTimeout)
 	if err != nil {
 		if err == nats.ErrTimeout {
 			if doClose {
