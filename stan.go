@@ -282,7 +282,7 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 	}
 
 	// Create a heartbeat inbox
-	hbInbox := nats.NewInbox()
+	hbInbox := nats.NewClientInbox(fmt.Sprintf("%s.HeartBeat", clientID))
 	var err error
 	if c.hbSubscription, err = c.nc.Subscribe(hbInbox, c.processHeartBeat); err != nil {
 		c.Close()
@@ -292,14 +292,14 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 	// Prepare a subscription on ping responses, even if we are not
 	// going to need it, so that if that fails, it fails before initiating
 	// a connection.
-	pingSub, err := c.nc.Subscribe(nats.NewInbox(), c.processPingResponse)
+	pingSub, err := c.nc.Subscribe(nats.NewClientInbox(fmt.Sprintf("%s.Ping", clientID)), c.processPingResponse)
 	if err != nil {
 		c.Close()
 		return nil, err
 	}
 
 	// Send Request to discover the cluster
-	discoverSubject := c.opts.DiscoverPrefix + "." + stanClusterID
+	discoverSubject := c.opts.DiscoverPrefix + "." + stanClusterID + "." + clientID
 	req := &pb.ConnectRequest{
 		ClientID:       clientID,
 		HeartbeatInbox: hbInbox,
@@ -337,7 +337,7 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 	c.closeRequests = cr.CloseRequests
 
 	// Setup the ACK subscription
-	c.ackSubject = DefaultACKPrefix + "." + nuid.Next()
+	c.ackSubject = DefaultACKPrefix + "." + clientID + "." + nuid.Next()
 	if c.ackSubscription, err = c.nc.Subscribe(c.ackSubject, c.processAck); err != nil {
 		c.Close()
 		return nil, err
